@@ -20,6 +20,15 @@ function sanitizeDisplayEmail(email) {
   return email;
 }
 
+function formatDisplayName(name) {
+  if (!name || typeof name !== 'string') return name || '';
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : ''))
+    .join(' ');
+}
+
 function toListItem(doc, userMap) {
   const user = userMap[doc.userId?.toString()] || {};
   const reportJson = doc.reportJson || {};
@@ -28,7 +37,7 @@ function toListItem(doc, userMap) {
   return {
     _id: doc._id,
     userId: doc.userId,
-    studentName: user.fullName || identity.fullName || 'Unknown',
+    studentName: formatDisplayName(user.fullName || identity.fullName || 'Unknown'),
     studentEmail: sanitizeDisplayEmail(user.email),
     careerId: user.careerId || identity.careerId || '',
     grade: doc.grade,
@@ -55,7 +64,7 @@ function toReportDetail(doc, user) {
     student: user
       ? {
           _id: user._id,
-          fullName: user.fullName,
+          fullName: formatDisplayName(user.fullName),
           email: sanitizeDisplayEmail(user.email),
           careerId: user.careerId || '',
           profileSegment: user.profileCompletion?.profileSegment || '',
@@ -63,7 +72,7 @@ function toReportDetail(doc, user) {
       : (() => {
           const identity = extractIdentityFromReport(doc);
           return identity.fullName
-            ? { _id: doc.userId, fullName: identity.fullName, email: '', careerId: identity.careerId, profileSegment: '' }
+            ? { _id: doc.userId, fullName: formatDisplayName(identity.fullName), email: '', careerId: identity.careerId, profileSegment: '' }
             : null;
         })(),
     grade: doc.grade,

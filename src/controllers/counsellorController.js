@@ -4,6 +4,14 @@ import Availability from '../models/Availability.js';
 import { generatePassword } from '../utils/generatePassword.js';
 import { success, paginated } from '../utils/apiResponse.js';
 import { groupSlotsByDate, normalizeDate } from '../services/availabilityEngine.js';
+import {
+  buildProfileImageKey,
+  deleteObject,
+  enrichCounsellorProfileImage,
+  extractS3Key,
+  getObject,
+  uploadObject,
+} from '../services/s3.js';
 
 export async function listCounsellors(req, res, next) {
   try {
@@ -30,7 +38,7 @@ export async function listCounsellors(req, res, next) {
       Counsellor.countDocuments(filter),
     ]);
 
-    return paginated(res, counsellors, { page, limit, total, pages: Math.ceil(total / limit) });
+    return paginated(res, counsellors.map(enrichCounsellorProfileImage), { page, limit, total, pages: Math.ceil(total / limit) });
   } catch (err) {
     next(err);
   }
@@ -42,7 +50,7 @@ export async function getPublicCounsellors(req, res, next) {
       .populate('specializations', 'name')
       .sort({ isRecommended: -1, firstName: 1 });
 
-    return success(res, counsellors);
+    return success(res, counsellors.map(enrichCounsellorProfileImage));
   } catch (err) {
     next(err);
   }
@@ -53,7 +61,7 @@ export async function getCounsellor(req, res, next) {
     const counsellor = await Counsellor.findOne({ _id: req.params.id, deletedAt: null })
       .populate('specializations', 'name');
     if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
-    return success(res, counsellor);
+    return success(res, enrichCounsellorProfileImage(counsellor));
   } catch (err) {
     next(err);
   }
@@ -88,7 +96,7 @@ export async function getCounsellorDetailForBooking(req, res, next) {
 
     const availabilityByDate = groupSlotsByDate(filtered);
 
-    return success(res, { counsellor, availability: availabilityByDate });
+    return success(res, { counsellor: enrichCounsellorProfileImage(counsellor), availability: availabilityByDate });
   } catch (err) {
     next(err);
   }
@@ -142,7 +150,7 @@ export async function createCounsellor(req, res, next) {
 
     const populated = await Counsellor.findById(counsellor._id).populate('specializations', 'name');
 
-    return success(res, { counsellor: populated, generatedPassword: password ? undefined : plainPassword }, 'Counsellor created', 201);
+    return success(res, { counsellor: enrichCounsellorProfileImage(populated), generatedPassword: password ? undefined : plainPassword }, 'Counsellor created', 201);
   } catch (err) {
     next(err);
   }
@@ -174,7 +182,7 @@ export async function updateCounsellor(req, res, next) {
     }
 
     const populated = await Counsellor.findById(counsellor._id).populate('specializations', 'name');
-    return success(res, populated, 'Counsellor updated');
+    return success(res, enrichCounsellorProfileImage(populated), 'Counsellor updated');
   } catch (err) {
     next(err);
   }
@@ -197,7 +205,7 @@ export async function updateCounsellorStatus(req, res, next) {
       });
     }
 
-    return success(res, counsellor, `Counsellor ${status}`);
+    return success(res, enrichCounsellorProfileImage(counsellor), `Counsellor ${status}`);
   } catch (err) {
     next(err);
   }
@@ -217,6 +225,60 @@ export async function deleteCounsellor(req, res, next) {
     }
 
     return success(res, null, 'Counsellor deleted');
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function streamCounsellorProfileImage(req, res, next) {
+  try {
+    const counsellor = await Counsellor.findOne({ _id: req.params.id, deletedAt: null });
+    if (!counsellor?.profileImage) {
+      return res.status(404).json({ success: false, message: 'Profile image not found' });
+    }
+
+    const key = extractS3Key(counsellor.profileImage);
+    const { body, contentType } = await getObject(key);
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    body.pipe(res);
+  } catch (err) {
+    if (err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) {
+      return res.status(404).json({ success: false, message: 'Profile image not found' });
+    }
+    next(err);
+  }
+}
+
+export async function uploadCounsellorProfileImage(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image file provided.' });
+    }
+
+    const counsellor = await Counsellor.findOne({ _id: req.params.id, deletedAt: null });
+    if (!counsellor) {
+      return res.status(404).json({ success: false, message: 'Counsellor not found' });
+    }
+
+    const key = buildProfileImageKey(counsellor._id, req.file.mimetype);
+    await uploadObject(key, req.file.buffer, req.file.mimetype);
+
+    const oldKey = extractS3Key(counsellor.profileImage);
+    counsellor.profileImage = key;
+    await counsellor.save();
+
+    if (oldKey && oldKey !== key) {
+      try {
+        await deleteObject(oldKey);
+      } catch {
+        // Non-fatal if old image cleanup fails
+      }
+    }
+
+    const populated = await Counsellor.findById(counsellor._id).populate('specializations', 'name');
+    return success(res, enrichCounsellorProfileImage(populated), 'Profile image updated');
   } catch (err) {
     next(err);
   }
