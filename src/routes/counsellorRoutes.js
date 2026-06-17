@@ -16,6 +16,7 @@ import { adminAuth } from '../middleware/adminAuth.js';
 import { requirePermission } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { profileImageUpload } from '../middleware/upload.js';
+import { counsellorBodyValidators } from '../validators/counsellorValidators.js';
 
 const router = Router();
 
@@ -38,17 +39,18 @@ router.get('/:id', [param('id').isMongoId()], validate, requirePermission('couns
 router.post(
   '/',
   requirePermission('counsellors.create'),
-  [
-    body('firstName').trim().notEmpty(),
-    body('email').isEmail().normalizeEmail(),
-    body('sessionFee').isNumeric(),
-    body('sessionDuration').optional().isInt({ min: 15 }),
-  ],
+  counsellorBodyValidators,
   validate,
   createCounsellor
 );
 
-router.put('/:id', [param('id').isMongoId()], validate, requirePermission('counsellors.edit'), updateCounsellor);
+router.put(
+  '/:id',
+  [param('id').isMongoId(), ...counsellorBodyValidators],
+  validate,
+  requirePermission('counsellors.edit'),
+  updateCounsellor
+);
 
 router.post(
   '/:id/profile-image',

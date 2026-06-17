@@ -1,9 +1,11 @@
 import Counsellor from '../models/Counsellor.js';
 import CounsellorUser from '../models/User.js';
 import Availability from '../models/Availability.js';
+import { ACTIVITY_ACTIONS } from '../constants/activityActions.js';
+import { logActivity } from '../services/activityLogger.js';
 import { generatePassword } from '../utils/generatePassword.js';
 import { success, paginated } from '../utils/apiResponse.js';
-import { groupSlotsByDate, normalizeDate } from '../services/availabilityEngine.js';
+import { normalizeDate, groupSlotsByDate, bookableAvailabilityFilter } from '../services/availabilityEngine.js';
 import {
   buildProfileImageKey,
   deleteObject,
@@ -74,12 +76,13 @@ export async function getCounsellorDetailForBooking(req, res, next) {
     if (!counsellor) return res.status(404).json({ success: false, message: 'Counsellor not found' });
 
     const today = normalizeDate(new Date());
-    const availabilities = await Availability.find({
-      counsellorId: counsellor._id,
-      date: { $gte: today },
-      type: 'available',
-      status: 'active',
-    }).sort({ date: 1 });
+    const availabilities = await Availability.find(
+      bookableAvailabilityFilter({
+        counsellorId: counsellor._id,
+        date: { $gte: today },
+        status: 'active',
+      })
+    ).sort({ date: 1 });
 
     const blockedDates = await Availability.find({
       counsellorId: counsellor._id,
@@ -150,6 +153,15 @@ export async function createCounsellor(req, res, next) {
 
     const populated = await Counsellor.findById(counsellor._id).populate('specializations', 'name');
 
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.COUNSELLOR_CREATED,
+      description: `Created counsellor ${counsellor.firstName} ${counsellor.lastName}`.trim(),
+      entityType: 'counsellor',
+      entityId: counsellor._id,
+      metadata: { email: counsellor.email },
+    });
+
     return success(res, { counsellor: enrichCounsellorProfileImage(populated), generatedPassword: password ? undefined : plainPassword }, 'Counsellor created', 201);
   } catch (err) {
     next(err);
@@ -182,6 +194,15 @@ export async function updateCounsellor(req, res, next) {
     }
 
     const populated = await Counsellor.findById(counsellor._id).populate('specializations', 'name');
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.COUNSELLOR_UPDATED,
+      description: `Updated counsellor ${counsellor.firstName} ${counsellor.lastName}`.trim(),
+      entityType: 'counsellor',
+      entityId: counsellor._id,
+    });
+
     return success(res, enrichCounsellorProfileImage(populated), 'Counsellor updated');
   } catch (err) {
     next(err);
@@ -205,6 +226,15 @@ export async function updateCounsellorStatus(req, res, next) {
       });
     }
 
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.COUNSELLOR_STATUS_CHANGED,
+      description: `Set counsellor ${counsellor.firstName} ${counsellor.lastName}`.trim() + ` to ${status}`,
+      entityType: 'counsellor',
+      entityId: counsellor._id,
+      metadata: { status },
+    });
+
     return success(res, enrichCounsellorProfileImage(counsellor), `Counsellor ${status}`);
   } catch (err) {
     next(err);
@@ -223,6 +253,14 @@ export async function deleteCounsellor(req, res, next) {
     if (counsellor.userId) {
       await CounsellorUser.findByIdAndUpdate(counsellor.userId, { status: 'inactive' });
     }
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.COUNSELLOR_DELETED,
+      description: `Deleted counsellor ${counsellor.firstName} ${counsellor.lastName}`.trim(),
+      entityType: 'counsellor',
+      entityId: counsellor._id,
+    });
 
     return success(res, null, 'Counsellor deleted');
   } catch (err) {
@@ -278,6 +316,15 @@ export async function uploadCounsellorProfileImage(req, res, next) {
     }
 
     const populated = await Counsellor.findById(counsellor._id).populate('specializations', 'name');
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.COUNSELLOR_PROFILE_IMAGE_UPDATED,
+      description: `Updated profile image for ${counsellor.firstName} ${counsellor.lastName}`.trim(),
+      entityType: 'counsellor',
+      entityId: counsellor._id,
+    });
+
     return success(res, enrichCounsellorProfileImage(populated), 'Profile image updated');
   } catch (err) {
     next(err);

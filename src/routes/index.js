@@ -8,6 +8,8 @@ import dashboardRoutes from './dashboardRoutes.js';
 import adminUserRoutes from './adminUserRoutes.js';
 import adminRoleRoutes from './adminRoleRoutes.js';
 import psychometricRoutes from './psychometricRoutes.js';
+import activityLogRoutes from './activityLogRoutes.js';
+import notificationRoutes from './notificationRoutes.js';
 
 const router = Router();
 
@@ -20,6 +22,8 @@ router.use('/bookings', bookingRoutes);
 router.use('/specializations', specializationRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/psychometric', psychometricRoutes);
+router.use('/activity-logs', activityLogRoutes);
+router.use('/notifications', notificationRoutes);
 
 router.get('/health', (req, res) => {
   res.json({ success: true, message: 'ILC Counsellor API is running' });

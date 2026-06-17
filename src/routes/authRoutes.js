@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { login, getMe } from '../controllers/authController.js';
+import { login, logout, getMe } from '../controllers/authController.js';
 import { authenticate, attachAdminUser } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 
@@ -15,6 +15,8 @@ router.post(
   validate,
   login
 );
+
+router.post('/logout', authenticate, attachAdminUser, logout);
 
 router.get('/me', authenticate, attachAdminUser, getMe);
 

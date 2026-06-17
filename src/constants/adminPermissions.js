@@ -18,6 +18,7 @@ export const ADMIN_PERMISSIONS = [
   { slug: 'psychometric.view', label: 'Report Detail', group: 'Psychometric', route: '/psychometric' },
   { slug: 'settings.users', label: 'User Access Management', group: 'Settings', route: '/settings/users' },
   { slug: 'settings.roles', label: 'Roles & Permissions', group: 'Settings', route: '/settings/roles' },
+  { slug: 'settings.activity', label: 'Activity Logs', group: 'Settings', route: '/settings/activity' },
 ];
 
 export const ALL_PERMISSION_SLUGS = ADMIN_PERMISSIONS.map((p) => p.slug);
@@ -57,4 +58,5 @@ export const API_PERMISSION_MAP = {
   psychometric: ['psychometric.list', 'psychometric.view'],
   adminUsers: ['settings.users'],
   adminRoles: ['settings.roles'],
+  activityLogs: ['settings.activity'],
 };

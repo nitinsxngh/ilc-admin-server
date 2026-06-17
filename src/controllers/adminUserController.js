@@ -1,5 +1,7 @@
 import IlcAdminUser from '../models/IlcAdminUser.js';
 import IlcAdminRole from '../models/IlcAdminRole.js';
+import { ACTIVITY_ACTIONS } from '../constants/activityActions.js';
+import { logActivity } from '../services/activityLogger.js';
 import { success, paginated } from '../utils/apiResponse.js';
 import { generatePassword } from '../utils/generatePassword.js';
 import { isSuperAdmin, ALL_PERMISSION_SLUGS } from '../constants/adminPermissions.js';
@@ -102,6 +104,15 @@ export async function createAdminUser(req, res, next) {
       .select('-passwordHash')
       .populate('roleId', 'name slug category level');
 
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.ADMIN_USER_CREATED,
+      description: `Created admin user ${user.firstName} ${user.lastName}`.trim() + ` (${user.email})`,
+      entityType: 'admin_user',
+      entityId: user._id,
+      metadata: { roleSlug: user.roleSlug },
+    });
+
     return success(
       res,
       {
@@ -162,6 +173,14 @@ export async function updateAdminUser(req, res, next) {
       .select('-passwordHash')
       .populate('roleId', 'name slug category level');
 
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.ADMIN_USER_UPDATED,
+      description: `Updated admin user ${user.firstName} ${user.lastName}`.trim() + ` (${user.email})`,
+      entityType: 'admin_user',
+      entityId: user._id,
+    });
+
     return success(res, toPublicUser(populated), 'User updated');
   } catch (err) {
     next(err);
@@ -179,6 +198,15 @@ export async function updateAdminUserStatus(req, res, next) {
 
     user.status = req.body.status;
     await user.save();
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.ADMIN_USER_STATUS_CHANGED,
+      description: `Set admin user ${user.email} to ${req.body.status}`,
+      entityType: 'admin_user',
+      entityId: user._id,
+      metadata: { status: req.body.status },
+    });
 
     return success(res, toPublicUser(user), `User ${req.body.status}`);
   } catch (err) {
@@ -201,6 +229,14 @@ export async function deleteAdminUser(req, res, next) {
 
     user.status = 'inactive';
     await user.save();
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.ADMIN_USER_DELETED,
+      description: `Deactivated admin user ${user.email}`,
+      entityType: 'admin_user',
+      entityId: user._id,
+    });
 
     return success(res, null, 'User deactivated');
   } catch (err) {

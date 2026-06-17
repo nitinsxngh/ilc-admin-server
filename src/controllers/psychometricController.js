@@ -1,5 +1,7 @@
 import PsychometricSubmission from '../models/PsychometricSubmission.js';
 import PlatformUser from '../models/PlatformUser.js';
+import { ACTIVITY_ACTIONS } from '../constants/activityActions.js';
+import { logActivity } from '../services/activityLogger.js';
 import { success, paginated } from '../utils/apiResponse.js';
 
 function extractIdentityFromReport(report) {
@@ -179,7 +181,18 @@ export async function getPsychometricReport(req, res, next) {
       .select('fullName email careerId profileCompletion.profileSegment')
       .lean();
 
-    return success(res, toReportDetail(report, user));
+    const detail = toReportDetail(report, user);
+    const studentLabel = detail.student?.fullName || 'student';
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.PSYCHOMETRIC_VIEWED,
+      description: `Viewed psychometric report for ${studentLabel}`,
+      entityType: 'psychometric',
+      entityId: report._id,
+      metadata: { careerId: detail.student?.careerId || '', grade: detail.grade },
+    });
+
+    return success(res, detail);
   } catch (err) {
     next(err);
   }

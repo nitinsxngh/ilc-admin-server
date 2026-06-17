@@ -3,8 +3,8 @@ import { body, param } from 'express-validator';
 import {
   listSpecializations,
   createSpecialization,
-  updateSpecialization,
-  deleteSpecialization,
+  softDeleteSpecialization,
+  permanentDeleteSpecialization,
 } from '../controllers/specializationController.js';
 import { adminAuth } from '../middleware/adminAuth.js';
 import { requirePermission } from '../middleware/auth.js';
@@ -17,7 +17,19 @@ router.get('/', listSpecializations);
 router.use(...adminAuth);
 
 router.post('/', requirePermission('specializations'), [body('name').trim().notEmpty()], validate, createSpecialization);
-router.put('/:id', [param('id').isMongoId()], validate, requirePermission('specializations'), updateSpecialization);
-router.delete('/:id', [param('id').isMongoId()], validate, requirePermission('specializations'), deleteSpecialization);
+router.delete(
+  '/:id/permanent',
+  requirePermission('specializations'),
+  [param('id').isMongoId()],
+  validate,
+  permanentDeleteSpecialization
+);
+router.delete(
+  '/:id',
+  requirePermission('specializations'),
+  [param('id').isMongoId()],
+  validate,
+  softDeleteSpecialization
+);
 
 export default router;

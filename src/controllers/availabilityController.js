@@ -1,11 +1,14 @@
 import Availability from '../models/Availability.js';
 import Counsellor from '../models/Counsellor.js';
+import { ACTIVITY_ACTIONS } from '../constants/activityActions.js';
+import { logActivity } from '../services/activityLogger.js';
 import { success, paginated } from '../utils/apiResponse.js';
 import {
   generateSlots,
   normalizeDate,
   getDatesInRange,
   groupSlotsByDate,
+  bookableAvailabilityFilter,
 } from '../services/availabilityEngine.js';
 
 export async function listAvailability(req, res, next) {
@@ -16,7 +19,11 @@ export async function listAvailability(req, res, next) {
     const filter = { status: 'active' };
 
     if (req.query.counsellorId) filter.counsellorId = req.query.counsellorId;
-    if (req.query.type) filter.type = req.query.type;
+    if (req.query.type) {
+      filter.type = req.query.type === 'available'
+        ? { $in: ['available', 'recurring'] }
+        : req.query.type;
+    }
     if (req.query.from || req.query.to) {
       filter.date = {};
       if (req.query.from) filter.date.$gte = normalizeDate(req.query.from);
@@ -53,12 +60,9 @@ export async function createAvailability(req, res, next) {
       return res.status(400).json({ success: false, message: 'No slots could be generated for this time range' });
     }
 
-    const existing = await Availability.findOne({
-      counsellorId,
-      date: normalizedDate,
-      type: 'available',
-      status: 'active',
-    });
+    const existing = await Availability.findOne(
+      bookableAvailabilityFilter({ counsellorId, date: normalizedDate, status: 'active' })
+    );
 
     if (existing) {
       existing.startTime = startTime;
@@ -66,6 +70,14 @@ export async function createAvailability(req, res, next) {
       existing.slotDuration = duration;
       existing.slots = slots;
       await existing.save();
+      logActivity({
+        req,
+        action: ACTIVITY_ACTIONS.AVAILABILITY_UPDATED,
+        description: `Updated availability for ${counsellor.firstName} on ${normalizedDate}`,
+        entityType: 'availability',
+        entityId: existing._id,
+        metadata: { counsellorId, date: normalizedDate },
+      });
       return success(res, existing, 'Availability updated');
     }
 
@@ -78,6 +90,15 @@ export async function createAvailability(req, res, next) {
       slots,
       type: 'available',
       createdBy: req.adminUser?._id,
+    });
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.AVAILABILITY_CREATED,
+      description: `Added availability for ${counsellor.firstName} on ${normalizedDate}`,
+      entityType: 'availability',
+      entityId: availability._id,
+      metadata: { counsellorId, date: normalizedDate },
     });
 
     return success(res, availability, 'Availability created', 201);
@@ -104,7 +125,7 @@ export async function createRecurringAvailability(req, res, next) {
     for (const date of dates) {
       const normalizedDate = normalizeDate(date);
       const doc = await Availability.findOneAndUpdate(
-        { counsellorId, date: normalizedDate, type: 'available' },
+        bookableAvailabilityFilter({ counsellorId, date: normalizedDate }),
         {
           counsellorId,
           date: normalizedDate,
@@ -121,6 +142,15 @@ export async function createRecurringAvailability(req, res, next) {
       );
       created.push(doc);
     }
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.AVAILABILITY_RECURRING_CREATED,
+      description: `Added recurring availability for ${counsellor.firstName} (${created.length} dates)`,
+      entityType: 'counsellor',
+      entityId: counsellorId,
+      metadata: { startDate, endDate, count: created.length },
+    });
 
     return success(res, created, `Recurring availability created for ${created.length} dates`, 201);
   } catch (err) {
@@ -153,6 +183,15 @@ export async function blockAvailability(req, res, next) {
       );
       blocked.push(doc);
     }
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.AVAILABILITY_BLOCKED,
+      description: `Blocked ${blocked.length} date(s) for counsellor`,
+      entityType: 'counsellor',
+      entityId: counsellorId,
+      metadata: { dates, reason: reason || '' },
+    });
 
     return success(res, blocked, 'Dates blocked', 201);
   } catch (err) {
@@ -195,6 +234,13 @@ export async function updateAvailability(req, res, next) {
       await availability.save();
       const populated = await Availability.findById(availability._id)
         .populate('counsellorId', 'firstName lastName email');
+      logActivity({
+        req,
+        action: ACTIVITY_ACTIONS.AVAILABILITY_UPDATED,
+        description: 'Updated availability block',
+        entityType: 'availability',
+        entityId: availability._id,
+      });
       return success(res, populated, 'Block updated');
     }
 
@@ -241,6 +287,14 @@ export async function updateAvailability(req, res, next) {
     const populated = await Availability.findById(availability._id)
       .populate('counsellorId', 'firstName lastName email');
 
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.AVAILABILITY_UPDATED,
+      description: 'Updated availability schedule',
+      entityType: 'availability',
+      entityId: availability._id,
+    });
+
     return success(res, populated, 'Availability updated');
   } catch (err) {
     next(err);
@@ -269,6 +323,14 @@ export async function deleteAvailability(req, res, next) {
     availability.status = 'inactive';
     await availability.save();
 
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.AVAILABILITY_DELETED,
+      description: availability.type === 'blocked' ? 'Removed availability block' : 'Removed availability schedule',
+      entityType: 'availability',
+      entityId: availability._id,
+    });
+
     return success(res, null, availability.type === 'blocked' ? 'Block removed' : 'Availability removed');
   } catch (err) {
     next(err);
@@ -280,12 +342,11 @@ export async function getCounsellorSlots(req, res, next) {
     const { counsellorId } = req.params;
     const { date } = req.query;
 
-    const filter = {
+    const filter = bookableAvailabilityFilter({
       counsellorId,
-      type: 'available',
       status: 'active',
       date: { $gte: normalizeDate(new Date()) },
-    };
+    });
 
     if (date) filter.date = normalizeDate(date);
 

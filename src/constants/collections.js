@@ -27,6 +27,7 @@ export const ADMIN_COLLECTIONS = {
   specializations: 'ilc_specializations',
   availabilities: 'ilc_availabilities',
   bookings: 'ilc_bookings',
+  activityLogs: 'ilc_activity_logs',
 };
 
 /** Old ILC-Admins names (pre-prefix) — migrate once with npm run migrate-collections */

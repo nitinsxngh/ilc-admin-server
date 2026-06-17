@@ -2,8 +2,10 @@ import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Availability from '../models/Availability.js';
 import Counsellor from '../models/Counsellor.js';
+import { ACTIVITY_ACTIONS } from '../constants/activityActions.js';
+import { logActivity } from '../services/activityLogger.js';
 import { success, paginated } from '../utils/apiResponse.js';
-import { normalizeDate } from '../services/availabilityEngine.js';
+import { normalizeDate, bookableAvailabilityFilter } from '../services/availabilityEngine.js';
 
 export async function listBookings(req, res, next) {
   try {
@@ -60,12 +62,13 @@ export async function createBooking(req, res, next) {
       return res.status(404).json({ success: false, message: 'Counsellor not available' });
     }
 
-    const availability = await Availability.findOne({
-      _id: availabilityId,
-      counsellorId,
-      type: 'available',
-      status: 'active',
-    }).session(session);
+    const availability = await Availability.findOne(
+      bookableAvailabilityFilter({
+        _id: availabilityId,
+        counsellorId,
+        status: 'active',
+      })
+    ).session(session);
 
     if (!availability) {
       await session.abortTransaction();
@@ -106,6 +109,21 @@ export async function createBooking(req, res, next) {
     const populated = await Booking.findById(booking[0]._id)
       .populate('counsellorId', 'firstName lastName email designation');
 
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.BOOKING_CREATED,
+      description: `Student booking created for ${studentName} with ${counsellor.firstName} ${counsellor.lastName}`.trim(),
+      entityType: 'booking',
+      entityId: booking[0]._id,
+      actorName: studentName,
+      actorEmail: studentEmail || '',
+      metadata: {
+        counsellorId,
+        bookingDate: availability.date,
+        startTime: slot.startTime,
+      },
+    });
+
     return success(res, populated, 'Booking confirmed', 201);
   } catch (err) {
     await session.abortTransaction();
@@ -145,6 +163,15 @@ export async function updateBookingStatus(req, res, next) {
 
     const populated = await Booking.findById(booking._id)
       .populate('counsellorId', 'firstName lastName email');
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.BOOKING_STATUS_CHANGED,
+      description: `Changed booking for ${booking.studentName} from ${previousStatus} to ${status}`,
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: { previousStatus, status },
+    });
 
     return success(res, populated, `Booking ${status}`);
   } catch (err) {
@@ -202,6 +229,20 @@ export async function rescheduleBooking(req, res, next) {
 
     const populated = await Booking.findById(booking._id)
       .populate('counsellorId', 'firstName lastName email');
+
+    logActivity({
+      req,
+      action: ACTIVITY_ACTIONS.BOOKING_RESCHEDULED,
+      description: `Rescheduled booking for ${booking.studentName}`,
+      entityType: 'booking',
+      entityId: booking._id,
+      metadata: {
+        availabilityId,
+        slotId,
+        bookingDate: booking.bookingDate,
+        startTime: booking.startTime,
+      },
+    });
 
     return success(res, populated, 'Booking rescheduled');
   } catch (err) {

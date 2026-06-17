@@ -54,6 +54,12 @@ export function normalizeDate(dateInput) {
   return d;
 }
 
+export const BOOKABLE_AVAILABILITY_TYPES = ['available', 'recurring'];
+
+export function bookableAvailabilityFilter(extra = {}) {
+  return { ...extra, type: { $in: BOOKABLE_AVAILABILITY_TYPES } };
+}
+
 export function getDatesInRange(startDate, endDate, frequency, daysOfWeek = []) {
   const dates = [];
   const current = normalizeDate(startDate);
