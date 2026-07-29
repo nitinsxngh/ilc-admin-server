@@ -9,6 +9,27 @@ import { success, paginated } from '../utils/apiResponse.js';
 const REPORT_MODE_AI = 'ai';
 const REPORT_MODE_MANUAL = 'manual';
 
+function studentPortalBase() {
+  return String(process.env.STUDENT_PORTAL_URL || '').trim().replace(/\/$/, '');
+}
+
+function buildReportUrl(reportMode, grade, reportShareId) {
+  const shareId = String(reportShareId || '').trim();
+  if (!shareId) return '';
+
+  const base = studentPortalBase();
+  if (!base) return '';
+
+  const params = new URLSearchParams({ shareId });
+  if (grade) params.set('grade', grade);
+  const path =
+    reportMode === REPORT_MODE_MANUAL
+      ? '/discover/psychometric/report-v2'
+      : '/discover/psychometric/report';
+
+  return `${base}${path}?${params.toString()}`;
+}
+
 function toAnalyticsLogSummary(log) {
   if (!log) return null;
   const responses = Array.isArray(log.responses) ? log.responses : [];
@@ -141,6 +162,7 @@ function toListItem(doc, userMap, reportMode) {
     careerId: user.careerId || identity.careerId || '',
     grade: doc.grade,
     reportShareId: doc.reportShareId || '',
+    reportUrl: buildReportUrl(reportMode, doc.grade, doc.reportShareId),
     reportStatus: doc.reportStatus || '',
     profileType: profileTypeFor(doc, reportMode),
     score: doc.score || null,
@@ -222,6 +244,7 @@ function toAiReportDetail(doc, user) {
     grade: doc.grade,
     reportShareId: doc.reportShareId || '',
     shareIdTail: doc.shareIdTail || '',
+    reportUrl: buildReportUrl(REPORT_MODE_AI, doc.grade, doc.reportShareId),
     reportStatus: doc.reportStatus,
     reportError: doc.reportError || '',
     answered: doc.answered,
@@ -311,6 +334,7 @@ function toManualReportDetail(doc, user) {
     grade: doc.grade,
     reportShareId: doc.reportShareId || '',
     shareIdTail: doc.shareIdTail || '',
+    reportUrl: buildReportUrl(REPORT_MODE_MANUAL, doc.grade, doc.reportShareId),
     reportStatus: doc.reportStatus || 'ready',
     reportError: '',
     answered: doc.answered,
