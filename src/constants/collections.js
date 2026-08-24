@@ -34,6 +34,12 @@ export const ADMIN_COLLECTIONS = {
   availabilities: 'ilc_availabilities',
   bookings: 'ilc_bookings',
   activityLogs: 'ilc_activity_logs',
+  schoolMous: 'ilc_school_mous',
+  eLibraryDocuments: 'ilc_e_library_documents',
+  eLibraryCategories: 'ilc_e_library_categories',
+  eLibraryLanguages: 'ilc_e_library_languages',
+  studyAbroadCases: 'ilc_study_abroad_cases',
+  studyAbroadChats: 'ilc_study_abroad_chats',
 };
 
 /** Old ILC-Admins names (pre-prefix) — migrate once with npm run migrate-collections */

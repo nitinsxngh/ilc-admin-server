@@ -1,4 +1,5 @@
 import Counsellor from '../models/Counsellor.js';
+import Specialization from '../models/Specialization.js';
 import CounsellorUser from '../models/User.js';
 import Availability from '../models/Availability.js';
 import Booking from '../models/Booking.js';
@@ -12,6 +13,7 @@ import {
   buildProfileImageKey,
   deleteObject,
   enrichCounsellorProfileImage,
+  ensurePublicMediaAccess,
   extractS3Key,
   getObject,
   uploadObject,
@@ -68,6 +70,7 @@ function enrichAdminBooking(booking, portalByAdminId, portalBySlot, paymentMap, 
 
 export async function listCounsellors(req, res, next) {
   try {
+    await ensurePublicMediaAccess();
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
     const skip = (page - 1) * limit;
@@ -99,7 +102,19 @@ export async function listCounsellors(req, res, next) {
 
 export async function getPublicCounsellors(req, res, next) {
   try {
-    const counsellors = await Counsellor.find({ status: 'active', deletedAt: null })
+    await ensurePublicMediaAccess();
+    const filter = { status: 'active', deletedAt: null };
+    const specializationQuery = String(req.query.specialization || req.query.program || '');
+
+    if (/study[\s-]*abroad/i.test(specializationQuery)) {
+      const specs = await Specialization.find({
+        name: { $regex: /study[\s-]*abroad/i },
+        status: 'active',
+      }).select('_id');
+      filter.specializations = { $in: specs.map((item) => item._id) };
+    }
+
+    const counsellors = await Counsellor.find(filter)
       .populate('specializations', 'name')
       .sort({ isRecommended: -1, firstName: 1 });
 
@@ -277,27 +292,39 @@ export async function createCounsellor(req, res, next) {
       languages, specializations, status, isRecommended,
     } = req.body;
 
-    const existing = await Counsellor.findOne({ email: email.toLowerCase(), deletedAt: null });
+    const normalizedEmail = String(email || '').toLowerCase().trim();
+    const existing = await Counsellor.findOne({ email: normalizedEmail, deletedAt: null });
     if (existing) {
       return res.status(409).json({ success: false, message: 'Email already in use' });
     }
 
     const plainPassword = password || generatePassword();
     const passwordHash = await CounsellorUser.hashPassword(plainPassword);
+    const userStatus = status === 'inactive' ? 'inactive' : 'active';
 
-    const user = await CounsellorUser.create({
+    let user = await CounsellorUser.findOne({ email: normalizedEmail });
+    if (user) {
+      user.firstName = firstName;
+      user.lastName = lastName || '';
+      user.passwordHash = passwordHash;
+      user.role = 'counsellor';
+      user.status = userStatus;
+      await user.save();
+    } else {
+      user = await CounsellorUser.create({
+        firstName,
+        lastName: lastName || '',
+        email: normalizedEmail,
+        passwordHash,
+        role: 'counsellor',
+        status: userStatus,
+      });
+    }
+
+    const counsellorFields = {
       firstName,
       lastName: lastName || '',
-      email: email.toLowerCase(),
-      passwordHash,
-      role: 'counsellor',
-      status: status === 'inactive' ? 'inactive' : 'active',
-    });
-
-    const counsellor = await Counsellor.create({
-      firstName,
-      lastName: lastName || '',
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       phone: phone || '',
       profileImage: profileImage || '',
       designation: designation || 'Career Counsellor',
@@ -310,7 +337,17 @@ export async function createCounsellor(req, res, next) {
       status: status || 'active',
       isRecommended: isRecommended || false,
       userId: user._id,
-    });
+      deletedAt: null,
+    };
+
+    const deleted = await Counsellor.findOne({ email: normalizedEmail, deletedAt: { $ne: null } });
+    let counsellor;
+    if (deleted) {
+      Object.assign(deleted, counsellorFields);
+      counsellor = await deleted.save();
+    } else {
+      counsellor = await Counsellor.create(counsellorFields);
+    }
 
     user.counsellorId = counsellor._id;
     await user.save();
@@ -323,7 +360,7 @@ export async function createCounsellor(req, res, next) {
       description: `Created counsellor ${counsellor.firstName} ${counsellor.lastName}`.trim(),
       entityType: 'counsellor',
       entityId: counsellor._id,
-      metadata: { email: counsellor.email },
+      metadata: { email: counsellor.email, restored: Boolean(deleted) },
     });
 
     return success(res, { counsellor: enrichCounsellorProfileImage(populated), generatedPassword: password ? undefined : plainPassword }, 'Counsellor created', 201);
@@ -465,7 +502,7 @@ export async function uploadCounsellorProfileImage(req, res, next) {
     }
 
     const key = buildProfileImageKey(counsellor._id, req.file.mimetype);
-    await uploadObject(key, req.file.buffer, req.file.mimetype);
+    await uploadObject(key, req.file.buffer, req.file.mimetype, { publicRead: true });
 
     const oldKey = extractS3Key(counsellor.profileImage);
     counsellor.profileImage = key;

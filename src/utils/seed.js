@@ -123,7 +123,7 @@ async function seedAdminUsers(roles) {
       lastName: 'Research',
       email: 'raj@ilc.com',
       roleSlug: 'researcher',
-      pageAccess: ['dashboard', 'psychometric.list', 'psychometric.view', 'specializations'],
+      pageAccess: ['dashboard', 'psychometric.list', 'psychometric.view', 'psychometric.mou', 'specializations'],
     },
     {
       firstName: 'Dev',

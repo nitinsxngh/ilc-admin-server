@@ -24,6 +24,20 @@ export const ACTIVITY_ACTIONS = {
   ADMIN_USER_DELETED: 'admin_user.deleted',
   ADMIN_ROLE_CREATED: 'admin_role.created',
   PSYCHOMETRIC_VIEWED: 'psychometric.viewed',
+  SCHOOL_MOU_CREATED: 'school_mou.created',
+  SCHOOL_MOU_UPDATED: 'school_mou.updated',
+  SCHOOL_MOU_STATUS_CHANGED: 'school_mou.status_changed',
+  SCHOOL_MOU_DELETED: 'school_mou.deleted',
+  ELIBRARY_CREATED: 'elibrary.created',
+  ELIBRARY_UPDATED: 'elibrary.updated',
+  ELIBRARY_STATUS_CHANGED: 'elibrary.status_changed',
+  ELIBRARY_DELETED: 'elibrary.deleted',
+  ELIBRARY_CATEGORY_CREATED: 'elibrary.category_created',
+  ELIBRARY_CATEGORY_STATUS_CHANGED: 'elibrary.category_status_changed',
+  ELIBRARY_CATEGORY_DELETED: 'elibrary.category_deleted',
+  ELIBRARY_LANGUAGE_CREATED: 'elibrary.language_created',
+  ELIBRARY_LANGUAGE_STATUS_CHANGED: 'elibrary.language_status_changed',
+  ELIBRARY_LANGUAGE_DELETED: 'elibrary.language_deleted',
 };
 
 export const ACTIVITY_ACTION_LABELS = {
@@ -52,6 +66,20 @@ export const ACTIVITY_ACTION_LABELS = {
   [ACTIVITY_ACTIONS.ADMIN_USER_DELETED]: 'Admin user deactivated',
   [ACTIVITY_ACTIONS.ADMIN_ROLE_CREATED]: 'Role created',
   [ACTIVITY_ACTIONS.PSYCHOMETRIC_VIEWED]: 'Psychometric report viewed',
+  [ACTIVITY_ACTIONS.SCHOOL_MOU_CREATED]: 'School MOU created',
+  [ACTIVITY_ACTIONS.SCHOOL_MOU_UPDATED]: 'School MOU updated',
+  [ACTIVITY_ACTIONS.SCHOOL_MOU_STATUS_CHANGED]: 'School MOU status changed',
+  [ACTIVITY_ACTIONS.SCHOOL_MOU_DELETED]: 'School MOU deleted',
+  [ACTIVITY_ACTIONS.ELIBRARY_CREATED]: 'E-library document uploaded',
+  [ACTIVITY_ACTIONS.ELIBRARY_UPDATED]: 'E-library document updated',
+  [ACTIVITY_ACTIONS.ELIBRARY_STATUS_CHANGED]: 'E-library document status changed',
+  [ACTIVITY_ACTIONS.ELIBRARY_DELETED]: 'E-library document deleted',
+  [ACTIVITY_ACTIONS.ELIBRARY_CATEGORY_CREATED]: 'E-library category added',
+  [ACTIVITY_ACTIONS.ELIBRARY_CATEGORY_STATUS_CHANGED]: 'E-library category status changed',
+  [ACTIVITY_ACTIONS.ELIBRARY_CATEGORY_DELETED]: 'E-library category deleted',
+  [ACTIVITY_ACTIONS.ELIBRARY_LANGUAGE_CREATED]: 'E-library language added',
+  [ACTIVITY_ACTIONS.ELIBRARY_LANGUAGE_STATUS_CHANGED]: 'E-library language status changed',
+  [ACTIVITY_ACTIONS.ELIBRARY_LANGUAGE_DELETED]: 'E-library language deleted',
 };
 
 export const ACTIVITY_ACTION_OPTIONS = Object.entries(ACTIVITY_ACTION_LABELS).map(([value, label]) => ({

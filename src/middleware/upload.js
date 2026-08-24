@@ -1,5 +1,5 @@
 import multer from 'multer';
-import { isAllowedImageType } from '../services/s3.js';
+import { isAllowedImageType, isAllowedPdfType } from '../services/s3.js';
 
 export const profileImageUpload = multer({
   storage: multer.memoryStorage(),
@@ -10,5 +10,17 @@ export const profileImageUpload = multer({
       return;
     }
     cb(new Error('Unsupported image type. Use JPEG, PNG, or WebP.'));
+  },
+}).single('file');
+
+export const eLibraryPdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (isAllowedPdfType(file.mimetype, file.originalname)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Only PDF files are allowed.'));
   },
 }).single('file');
