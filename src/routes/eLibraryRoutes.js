@@ -9,6 +9,7 @@ import {
   listELibraryDocuments,
   listELibraryMeta,
   listPublicELibraryDocuments,
+  presignELibraryUpload,
   streamELibraryFile,
   updateELibraryDocument,
   updateELibraryStatus,
@@ -31,11 +32,16 @@ import { validate } from '../middleware/validate.js';
 const router = Router();
 
 function handlePdfUpload(req, res, next) {
+  const contentType = String(req.headers['content-type'] || '');
+  if (contentType.includes('application/json')) {
+    next();
+    return;
+  }
   eLibraryPdfUpload(req, res, (err) => {
     if (err) {
       const message =
         err.code === 'LIMIT_FILE_SIZE'
-          ? 'PDF must be 25 MB or smaller.'
+          ? 'PDF must be 80 MB or smaller.'
           : err.message || 'Invalid PDF upload.';
       return res.status(400).json({ success: false, message });
     }
@@ -100,6 +106,13 @@ router.delete(
   deleteELibraryLanguage
 );
 router.get('/', requirePermission('elibrary.list'), listELibraryDocuments);
+router.post(
+  '/presign',
+  requirePermission('elibrary.list'),
+  [body('fileName').trim().notEmpty()],
+  validate,
+  presignELibraryUpload
+);
 router.get(
   '/:id',
   [param('id').isMongoId()],

@@ -14,6 +14,10 @@ import {
   getObject,
   ensureELibraryPublicAccess,
   uploadObject,
+  createPresignedPutUrl,
+  ensureBucketCors,
+  headObject,
+  isELibraryDocumentKey,
 } from '../services/s3.js';
 import { renderPdfFirstPageJpeg } from '../services/pdfThumbnail.js';
 
@@ -171,10 +175,75 @@ export async function listELibraryDocuments(req, res, next) {
   }
 }
 
+const MAX_ELIBRARY_PDF_BYTES = 80 * 1024 * 1024;
+
+async function resolveUploadedPdf(req) {
+  if (req.file) {
+    return {
+      buffer: req.file.buffer,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      s3Key: '',
+      documentId: '',
+    };
+  }
+
+  const s3Key = extractS3Key(req.body.s3Key);
+  if (!s3Key || !isELibraryDocumentKey(s3Key)) {
+    return { error: 'A PDF file is required.' };
+  }
+
+  const head = await headObject(s3Key);
+  if (!head?.contentLength) {
+    return { error: 'PDF upload did not finish. Please try again.' };
+  }
+  if (head.contentLength > MAX_ELIBRARY_PDF_BYTES) {
+    return { error: 'PDF must be 80 MB or smaller.' };
+  }
+
+  const { body } = await getObject(s3Key);
+  const buffer = await streamToBuffer(body);
+  return {
+    buffer,
+    fileName: String(req.body.fileName || 'document.pdf'),
+    fileSize: head.contentLength,
+    s3Key,
+    documentId: String(req.body.documentId || ''),
+  };
+}
+
+export async function presignELibraryUpload(req, res, next) {
+  try {
+    const fileName = String(req.body.fileName || 'document.pdf');
+    const fileSize = Number(req.body.fileSize || 0);
+    if (fileSize > MAX_ELIBRARY_PDF_BYTES) {
+      return res.status(400).json({ success: false, message: 'PDF must be 80 MB or smaller.' });
+    }
+
+    let documentId = String(req.body.documentId || '').trim();
+    if (documentId) {
+      if (!mongoose.isValidObjectId(documentId)) {
+        return res.status(400).json({ success: false, message: 'Invalid document id.' });
+      }
+    } else {
+      documentId = String(new mongoose.Types.ObjectId());
+    }
+
+    await ensureELibraryPublicAccess();
+    await ensureBucketCors();
+    const s3Key = buildELibraryDocumentKey(documentId, fileName);
+    const uploadUrl = await createPresignedPutUrl(s3Key, 'application/pdf');
+    return success(res, { documentId, s3Key, uploadUrl });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function createELibraryDocument(req, res, next) {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'A PDF file is required.' });
+    const uploaded = await resolveUploadedPdf(req);
+    if (uploaded.error) {
+      return res.status(400).json({ success: false, message: uploaded.error });
     }
     const meta = await parseMetadata(req.body);
     if (meta.error) {
@@ -184,18 +253,23 @@ export async function createELibraryDocument(req, res, next) {
       return res.status(400).json({ success: false, message: 'Title is required.' });
     }
 
-    const id = new mongoose.Types.ObjectId();
-    const s3Key = buildELibraryDocumentKey(id, req.file.originalname);
-    await uploadObject(s3Key, req.file.buffer, 'application/pdf', { publicRead: true });
-    const thumbnailS3Key = await safeCreateThumbnail(id, req.file.buffer);
+    const id =
+      uploaded.documentId && mongoose.isValidObjectId(uploaded.documentId)
+        ? new mongoose.Types.ObjectId(uploaded.documentId)
+        : new mongoose.Types.ObjectId();
+    const s3Key = uploaded.s3Key || buildELibraryDocumentKey(id, uploaded.fileName);
+    if (!uploaded.s3Key) {
+      await uploadObject(s3Key, uploaded.buffer, 'application/pdf', { publicRead: true });
+    }
+    const thumbnailS3Key = await safeCreateThumbnail(id, uploaded.buffer);
 
     let item;
     try {
       item = await ELibraryDocument.create({
         _id: id,
         ...meta,
-        fileName: req.file.originalname,
-        fileSize: req.file.size,
+        fileName: uploaded.fileName,
+        fileSize: uploaded.fileSize,
         contentType: 'application/pdf',
         s3Key,
         thumbnailS3Key,
@@ -244,14 +318,20 @@ export async function updateELibraryDocument(req, res, next) {
 
     Object.assign(item, meta);
 
-    if (req.file) {
-      const nextKey = buildELibraryDocumentKey(item._id, req.file.originalname);
-      await uploadObject(nextKey, req.file.buffer, 'application/pdf', { publicRead: true });
-      const nextThumb = await safeCreateThumbnail(item._id, req.file.buffer);
+    const uploaded = req.file || req.body.s3Key ? await resolveUploadedPdf(req) : null;
+    if (uploaded?.error) {
+      return res.status(400).json({ success: false, message: uploaded.error });
+    }
+    if (uploaded && !uploaded.error) {
+      const nextKey = uploaded.s3Key || buildELibraryDocumentKey(item._id, uploaded.fileName);
+      if (!uploaded.s3Key) {
+        await uploadObject(nextKey, uploaded.buffer, 'application/pdf', { publicRead: true });
+      }
+      const nextThumb = await safeCreateThumbnail(item._id, uploaded.buffer);
       const oldKey = extractS3Key(item.s3Key);
       const oldThumb = item.thumbnailS3Key;
-      item.fileName = req.file.originalname;
-      item.fileSize = req.file.size;
+      item.fileName = uploaded.fileName;
+      item.fileSize = uploaded.fileSize;
       item.contentType = 'application/pdf';
       item.s3Key = nextKey;
       if (nextThumb) item.thumbnailS3Key = nextThumb;

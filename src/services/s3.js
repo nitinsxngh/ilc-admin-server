@@ -1,13 +1,18 @@
 import {
   DeleteObjectCommand,
+  GetBucketCorsCommand,
   GetBucketPolicyCommand,
   GetObjectCommand,
   GetPublicAccessBlockCommand,
+  HeadObjectCommand,
+  PutBucketCorsCommand,
   PutBucketPolicyCommand,
   PutObjectCommand,
   PutPublicAccessBlockCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { getAllowedCorsOrigins } from '../utils/corsOrigins.js';
 
 const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',
@@ -131,10 +136,12 @@ export function ensureELibraryPublicAccess() {
 
 export function ensurePublicMediaAccess() {
   if (!publicMediaAccessPromise) {
-    publicMediaAccessPromise = applyPublicMediaAccess().catch((err) => {
-      publicMediaAccessPromise = null;
-      console.warn('Could not make S3 media prefixes public:', err.message);
-    });
+    publicMediaAccessPromise = applyPublicMediaAccess()
+      .then(() => ensureBucketCors())
+      .catch((err) => {
+        publicMediaAccessPromise = null;
+        console.warn('Could not make S3 media prefixes public:', err.message);
+      });
   }
   return publicMediaAccessPromise;
 }
@@ -222,6 +229,86 @@ export function getApiBaseUrl() {
 export function getProfileImageProxyUrl(counsellorId) {
   if (!counsellorId) return '';
   return `${getApiBaseUrl()}/counsellors/media/${counsellorId}/profile-image`;
+}
+
+export async function createPresignedPutUrl(key, contentType, expiresIn = 600) {
+  const { bucket } = getConfig();
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+  return getSignedUrl(getS3Client(), command, { expiresIn });
+}
+
+export async function headObject(key) {
+  const { bucket } = getConfig();
+  try {
+    const response = await getS3Client().send(
+      new HeadObjectCommand({ Bucket: bucket, Key: key })
+    );
+    return {
+      contentLength: Number(response.ContentLength || 0),
+      contentType: response.ContentType || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function isELibraryDocumentKey(key) {
+  const prefix = process.env.AWS_S3_ELIBRARY_PREFIX || 'e-library-documents';
+  return String(key || '').startsWith(`${prefix}/`);
+}
+
+export async function ensureBucketCors() {
+  const { bucket } = getConfig();
+  const allowedOrigins = getAllowedCorsOrigins();
+  const nextRule = {
+    AllowedHeaders: ['*'],
+    AllowedMethods: ['GET', 'PUT', 'HEAD'],
+    AllowedOrigins: allowedOrigins,
+    ExposeHeaders: ['ETag', 'x-amz-request-id'],
+    MaxAgeSeconds: 3600,
+  };
+
+  try {
+    const current = await getS3Client().send(new GetBucketCorsCommand({ Bucket: bucket }));
+    const rules = current.CORSRules || [];
+    const alreadySet = rules.some((rule) => {
+      const origins = new Set(rule.AllowedOrigins || []);
+      const methods = new Set(rule.AllowedMethods || []);
+      return (
+        allowedOrigins.every((origin) => origins.has(origin) || origins.has('*')) &&
+        methods.has('PUT')
+      );
+    });
+    if (alreadySet) return;
+  } catch (err) {
+    if (err.name !== 'NoSuchCORSConfiguration' && err.$metadata?.httpStatusCode !== 404) {
+      console.warn('Could not read S3 CORS:', err.message);
+    }
+  }
+
+  try {
+    await getS3Client().send(
+      new PutBucketCorsCommand({
+        Bucket: bucket,
+        CORSConfiguration: { CORSRules: [nextRule] },
+      })
+    );
+  } catch (err) {
+    console.warn('Could not update S3 CORS:', err.message);
+  }
+}
+  const { bucket } = getConfig();
+  const response = await getS3Client().send(
+    new GetObjectCommand({ Bucket: bucket, Key: key })
+  );
+  return {
+    body: response.Body,
+    contentType: response.ContentType || 'application/octet-stream',
+  };
 }
 
 export async function getObject(key) {

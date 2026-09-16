@@ -15,7 +15,7 @@ export const profileImageUpload = multer({
 
 export const eLibraryPdfUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: 80 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
     if (isAllowedPdfType(file.mimetype, file.originalname)) {
       cb(null, true);
