@@ -301,15 +301,6 @@ export async function ensureBucketCors() {
     console.warn('Could not update S3 CORS:', err.message);
   }
 }
-  const { bucket } = getConfig();
-  const response = await getS3Client().send(
-    new GetObjectCommand({ Bucket: bucket, Key: key })
-  );
-  return {
-    body: response.Body,
-    contentType: response.ContentType || 'application/octet-stream',
-  };
-}
 
 export async function getObject(key) {
   const { bucket } = getConfig();
